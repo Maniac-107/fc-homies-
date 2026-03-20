@@ -54,18 +54,20 @@ init_lfm_db()
 
 # ========== KEEP ALIVE ==========
 
-app = Flask('')
+app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "Bot running"
 
 def run():
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080, use_reloader=False)
 
 def keep_alive():
     t = Thread(target=run)
+    t.daemon = True
     t.start()
+
 
 # ========== BOT SETUP ==========
 
@@ -73,6 +75,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.guilds = True   # FIXED
 
 bot = commands.Bot(
     command_prefix="!",
@@ -83,11 +86,17 @@ bot = commands.Bot(
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+
+    try:
+        await bot.tree.sync()
+    except Exception as e:
+        print(e)
+
     print("Bot started")
     print(bot.user)
 
-# ========== UPDATED OVR COMMAND ==========
+
+# ========== OVR COMMAND ==========
 
 @bot.tree.command(name="ovr-calculator", description="Calculate your team OVR instantly")
 @app_commands.describe(
@@ -108,7 +117,6 @@ async def ovr_calculator(
 
     try:
 
-        # convert input text into list of numbers
         base_nums = [int(v.strip()) for v in base_values.split("+")]
         rank_nums = [int(v.strip()) for v in rank_values.split("+")]
 
@@ -126,22 +134,18 @@ async def ovr_calculator(
             )
             return
 
-        # totals
         base_sum = sum(base_nums)
         rank_sum = sum(rank_nums)
 
-        # average formula
         base_avg = 1 + (base_sum - 1) // players
         rank_avg = 1 + (rank_sum - 1) // players
 
         badge_bonus = badges
         final_ovr = base_avg + rank_avg + badge_bonus
 
-        # next level requirement
         need_base = (base_avg * players) + 1 - base_sum
         need_rank = (rank_avg * players) + 1 - rank_sum
 
-        # embed
         em = discord.Embed(
             title="⚡ OVR Result",
             color=0x2563EB
@@ -157,7 +161,6 @@ async def ovr_calculator(
         else:
             em.add_field(name="Total OVR", value=final_ovr, inline=True)
 
-        # next level info
         req_list = []
 
         if need_base > 0:
@@ -173,7 +176,6 @@ async def ovr_calculator(
                 inline=False
             )
 
-        # breakdown
         text = f"{base_avg} + {rank_avg}"
 
         if badges > 0:
@@ -191,17 +193,17 @@ async def ovr_calculator(
 
         await interaction.followup.send(embed=em)
 
-    except:
+    except Exception as e:
+        print(e)
         await interaction.followup.send(
             "❌ Invalid input format. Use + between numbers.",
             ephemeral=True
         )
 
 
-#### PROFIT LOSS CALCULATOR ###
+# ========== INVEST COMMAND ==========
 
-
-@bot.tree.command(name="invest", description="Investment profit/loss calculator")
+@bot.tree.command(name="profit-loss-calculator", description="Investment profit/loss calculator")
 @app_commands.describe(
     buy_price="Buying price",
     sell_price="Selling price"
@@ -222,73 +224,47 @@ async def invest_calc(
         sell_after_tax = sell_price - tax
         profit = sell_after_tax - buy_price
 
-
-        # ===== Color + result =====
-
         if sell_price > buy_price:
-            color = 0x16A34A  # green
+            color = 0x16A34A
             result_text = f"Profit: {profit:,.0f}"
         elif buy_price > sell_price:
-            color = 0xDC2626  # red
+            color = 0xDC2626
             result_text = f"Loss: {abs(profit):,.0f}"
         else:
-            color = 0x808080  # gray
+            color = 0x808080
             result_text = "No Profit No Loss"
-
-
-        # ===== Profit % =====
 
         if buy_price != 0:
             percent = (profit / buy_price) * 100
         else:
             percent = 0
 
-
-        # ===== Embed =====
-
         embed = discord.Embed(
             title="Investment Result",
             color=color
         )
 
-        embed.add_field(
-            name="Buying Price",
-            value=f"{buy_price:,.0f}",
-            inline=False
-        )
-
-        embed.add_field(
-            name="Selling Price",
-            value=f"{sell_price:,.0f}",
-            inline=False
-        )
-
-        embed.add_field(
-            name="Tax (10%)",
-            value=f"{tax:,.0f}",
-            inline=False
-        )
-
-        embed.add_field(
-            name="Result",
-            value=result_text,
-            inline=False
-        )
-
-        embed.add_field(
-            name="Profit %",
-            value=f"{percent:.2f}%",
-            inline=False
-        )
+        embed.add_field(name="Buying Price", value=f"{buy_price:,.0f}", inline=False)
+        embed.add_field(name="Selling Price", value=f"{sell_price:,.0f}", inline=False)
+        embed.add_field(name="Tax (10%)", value=f"{tax:,.0f}", inline=False)
+        embed.add_field(name="Result", value=result_text, inline=False)
+        embed.add_field(name="Profit %", value=f"{percent:.2f}%", inline=False)
 
         await interaction.followup.send(embed=embed)
 
-    except Exception:
+    except Exception as e:
+        print(e)
         await interaction.followup.send(
             "Invalid values",
             ephemeral=True
         )
 
+
+# ========== START ==========
+
 keep_alive()
+
+if TOKEN is None:
+    print("TOKEN NOT FOUND")
 
 bot.run(TOKEN)
